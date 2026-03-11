@@ -1,6 +1,96 @@
 #include "PluginEditor.h"
 #include <BinaryData.h>
 
+struct KimuVerbAudioProcessorEditor::SampleData
+{
+    juce::AudioBuffer<float> buffer;
+    double sampleRate = 44100.0;
+};
+
+struct KimuVerbAudioProcessorEditor::UiSampleSource : public juce::AudioSource
+{
+    void prepareToPlay(int, double sampleRate) override { sr = sampleRate > 0.0 ? sampleRate : 44100.0; }
+    void releaseResources() override {}
+
+    void setSample(std::shared_ptr<SampleData> data)
+    {
+        sampleData = std::move(data);
+    }
+
+    void trigger(double durationSeconds, float gain, double startOffsetSeconds = 0.0)
+    {
+        if (! sampleData || sampleData->buffer.getNumSamples() == 0)
+            return;
+
+        const auto srcRate = sampleData->sampleRate > 0.0 ? sampleData->sampleRate : 44100.0;
+        const auto srcLen = sampleData->buffer.getNumSamples();
+
+        const auto startSample = (int) std::round(startOffsetSeconds * srcRate);
+        const auto maxPlayable = juce::jlimit(0, srcLen - 1, srcLen - startSample);
+        const auto durationSamples = (int) std::round(durationSeconds * srcRate);
+
+        srcStart = juce::jlimit(0, srcLen - 1, startSample);
+        srcLength = juce::jmax(1, juce::jmin(maxPlayable, durationSamples));
+        srcPos = 0.0;
+        srcStep = srcRate / sr;
+        level = juce::jlimit(0.0f, 1.0f, gain);
+        active = true;
+    }
+
+    void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override
+    {
+        bufferToFill.clearActiveBufferRegion();
+        if (! active || sr <= 0.0 || ! sampleData)
+            return;
+
+        auto* out = bufferToFill.buffer;
+        auto& in = sampleData->buffer;
+        const int outCh = out->getNumChannels();
+        const int inCh = in.getNumChannels();
+        const int numSamples = bufferToFill.numSamples;
+        const int start = bufferToFill.startSample;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            if ((int) std::floor(srcPos) >= srcLength)
+            {
+                active = false;
+                break;
+            }
+
+            const int idx = srcStart + (int) std::floor(srcPos);
+            float sample = 0.0f;
+            if (idx >= 0 && idx < in.getNumSamples())
+            {
+                const float s0 = in.getSample(0, idx);
+                const float s1 = (inCh > 1) ? in.getSample(1, idx) : s0;
+                sample = (s0 + s1) * 0.5f;
+            }
+
+            const float t = (float) srcPos / (float) juce::jmax(1, srcLength);
+            const float fadeIn = juce::jmin(1.0f, t / 0.03f);
+            const float fadeOut = juce::jmin(1.0f, (1.0f - t) / 0.08f);
+            const float env = fadeIn * fadeOut;
+            sample *= level * env;
+
+            for (int ch = 0; ch < outCh; ++ch)
+                out->addSample(ch, start + i, sample);
+
+            srcPos += srcStep;
+        }
+    }
+
+    double sr = 44100.0;
+    float level = 0.1f;
+    double srcPos = 0.0;
+    double srcStep = 1.0;
+    int srcStart = 0;
+    int srcLength = 0;
+    bool active = false;
+    std::shared_ptr<SampleData> sampleData;
+};
+
+
 //==============================================================================
 // OceanLookAndFeel Implementation
 //==============================================================================
@@ -11,6 +101,15 @@ void OceanLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wid
     auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
     auto centre = bounds.getCentre();
     auto angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
+    const bool isHovered = slider.isMouseOverOrDragging();
+
+    if (isHovered)
+    {
+        juce::ColourGradient glowGrad(juce::Colour(100, 200, 255).withAlpha(0.28f), centre.x - radius * 1.2f, centre.y - radius * 1.2f,
+                                      juce::Colour(150, 220, 255).withAlpha(0.10f), centre.x + radius * 1.2f, centre.y + radius * 1.2f, false);
+        g.setGradientFill(glowGrad);
+        g.fillEllipse(centre.x - radius * 1.2f, centre.y - radius * 1.2f, radius * 2.4f, radius * 2.4f);
+    }
 
     juce::ColourGradient outerRing(juce::Colour(15, 35, 55), centre.x - radius, centre.y - radius,
                                    juce::Colour(25, 45, 65), centre.x + radius, centre.y + radius, false);
@@ -27,17 +126,17 @@ void OceanLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wid
 
     g.setColour(juce::Colour(100, 200, 255).withAlpha(0.9f));
     juce::Path arc;
-arc.addArc(centre.x - radius * 0.75f, centre.y - radius * 0.75f, radius * 1.5f, radius * 1.5f,
-           rotaryStartAngle, angle, true);
-g.strokePath(arc, juce::PathStrokeType(3.0f));
+    arc.addArc(centre.x - radius * 0.75f, centre.y - radius * 0.75f, radius * 1.5f, radius * 1.5f,
+               rotaryStartAngle, angle, true);
+    g.strokePath(arc, juce::PathStrokeType(isHovered ? 4.0f : 3.0f));
 
     juce::Path pointer;
     auto pointerLength = radius * 0.7f;
-    auto pointerThickness = 3.0f;
+    auto pointerThickness = isHovered ? 4.0f : 3.0f;
     pointer.addLineSegment(juce::Line<float>(centre.x, centre.y,
                                              centre.x + std::sin(angle) * pointerLength,
                                              centre.y - std::cos(angle) * pointerLength), pointerThickness);
-    g.setColour(juce::Colour(150, 220, 255));
+    g.setColour(isHovered ? juce::Colour(235, 245, 255) : juce::Colour(150, 220, 255));
     g.strokePath(pointer, juce::PathStrokeType(pointerThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     g.setColour(juce::Colour(200, 230, 255));
@@ -87,9 +186,31 @@ void OceanLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& b
 
 void OceanLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
 {
+    auto bounds = label.getLocalBounds().toFloat().reduced(3.0f);
+    const bool isHovered = label.isMouseOverOrDragging();
+
+    if (isHovered)
+    {
+        juce::ColourGradient hoverBg(juce::Colour(30, 60, 120), bounds.getX(), bounds.getY(),
+                                     juce::Colour(50, 100, 180), bounds.getRight(), bounds.getBottom(), false);
+        g.setGradientFill(hoverBg);
+        g.fillRoundedRectangle(bounds, 3.0f);
+
+        g.setColour(juce::Colour(100, 150, 255));
+        g.drawRoundedRectangle(bounds, 3.0f, 1.0f);
+    }
+    else
+    {
+        g.setColour(juce::Colour(15, 30, 50).withAlpha(0.3f));
+        g.fillRoundedRectangle(bounds, 3.0f);
+
+        g.setColour(juce::Colour(20, 40, 70));
+        g.drawRoundedRectangle(bounds, 3.0f, 0.8f);
+    }
+
     g.setColour(juce::Colour(200, 220, 240));
-    g.setFont(juce::Font(12.0f));
-    g.drawFittedText(label.getText(), label.getLocalBounds(), juce::Justification::centred, 1);
+    g.setFont(juce::Font(12.0f, juce::Font::bold));
+    g.drawFittedText(label.getText(), bounds.toNearestInt(), juce::Justification::centred, 1);
 }
 
 void OceanLookAndFeel::setKnobImage(const juce::Image& img)
@@ -362,11 +483,46 @@ void KimuVerbAudioProcessorEditor::loadImages()
     juce::Logger::writeToLog("Logo loaded: " + juce::String(logoImage.isValid() ? "YES" : "NO"));
 }
 
+bool KimuVerbAudioProcessorEditor::loadAudioFile(const juce::File& file, SampleData& outData, const juce::String& label)
+{
+    if (! file.existsAsFile())
+    {
+        juce::Logger::writeToLog(label + " audio missing: " + file.getFullPathName());
+        return false;
+    }
+
+    std::unique_ptr<juce::AudioFormatReader> reader(uiFormatManager.createReaderFor(file));
+    if (reader == nullptr)
+    {
+        juce::Logger::writeToLog(label + " audio failed to load: " + file.getFullPathName());
+        return false;
+    }
+
+    outData.sampleRate = reader->sampleRate;
+    outData.buffer.setSize((int) reader->numChannels, (int) reader->lengthInSamples);
+    reader->read(&outData.buffer, 0, (int) reader->lengthInSamples, 0, true, true);
+    juce::Logger::writeToLog(label + " audio loaded: " + file.getFileName());
+    return true;
+}
+
+void KimuVerbAudioProcessorEditor::loadAudioFiles()
+{
+    uiFormatManager.registerBasicFormats();
+    whaleData = std::make_shared<SampleData>();
+    betterOceanData = std::make_shared<SampleData>();
+
+    loadAudioFile(juce::File("c:/Users/Owner/Desktop/assets/audio/kimuverb sounds/whale sound/killer whale sound.mp3"),
+                  *whaleData, "Whale");
+    loadAudioFile(juce::File("c:/Users/Owner/Desktop/assets/audio/kimuverb sounds/ocean sound/better ocean sound/better ocean sound.mp3"),
+                  *betterOceanData, "Better Ocean");
+}
+
 KimuVerbAudioProcessorEditor::KimuVerbAudioProcessorEditor(KimuVerbAudioProcessor& p)
 : juce::AudioProcessorEditor(&p), processor(p)
 {
     setLookAndFeel(&lnf);
     loadImages();
+    loadAudioFiles();
     lnf.setKnobStripImage(knobStripImage);
     lnf.setKnobImage(knobImage);
     
@@ -380,6 +536,7 @@ KimuVerbAudioProcessorEditor::KimuVerbAudioProcessorEditor(KimuVerbAudioProcesso
     setupParameters();
     setupPresetDropdown();
     setupPresetNavigation();
+    setupUiAudio();
     
     setSize(900, 600);
     createOrcaBodyMapping();
@@ -389,6 +546,7 @@ KimuVerbAudioProcessorEditor::KimuVerbAudioProcessorEditor(KimuVerbAudioProcesso
 
 KimuVerbAudioProcessorEditor::~KimuVerbAudioProcessorEditor()
 {
+    shutdownUiAudio();
     setLookAndFeel(nullptr);
 }
 
@@ -418,10 +576,12 @@ void KimuVerbAudioProcessorEditor::paint(juce::Graphics& g)
     contentArea.removeFromBottom(110.0f);
     auto orcaArea = contentArea.reduced(10.0f);
     if (orcaImage.isValid())
+    {
         g.drawImageWithin(orcaImage,
                           (int) orcaArea.getX(), (int) orcaArea.getY(),
                           (int) orcaArea.getWidth(), (int) orcaArea.getHeight(),
                           juce::RectanglePlacement::centred);
+    }
     else
     {
         g.setColour(juce::Colour(20, 40, 60).withAlpha(0.9f));
@@ -434,25 +594,19 @@ void KimuVerbAudioProcessorEditor::paint(juce::Graphics& g)
     if (logoImage.isValid())
     {
         auto logoArea = bounds.removeFromTop(70.0f).removeFromLeft(320.0f).reduced(10.0f);
+        juce::ColourGradient logoBg(juce::Colour(10, 30, 60), logoArea.getX(), logoArea.getY(),
+                                    juce::Colour(20, 50, 90), logoArea.getRight(), logoArea.getBottom(), false);
+        g.setGradientFill(logoBg);
+        g.fillRoundedRectangle(logoArea.toFloat(), 5.0f);
+        g.setColour(juce::Colours::black);
+        g.drawRoundedRectangle(logoArea.toFloat(), 5.0f, 2.0f);
         g.drawImageWithin(logoImage,
                           (int) logoArea.getX(), (int) logoArea.getY(),
                           (int) logoArea.getWidth(), (int) logoArea.getHeight(),
                           juce::RectanglePlacement::centred);
     }
 
-    auto drawLabel = [&](const juce::Image& img, const juce::Slider& s, float yOffset)
-    {
-        if (! img.isValid())
-            return;
-        auto r = s.getBounds().toFloat().translated(0.0f, yOffset).expanded(20.0f, 10.0f);
-        g.drawImageWithin(img,
-                          (int) r.getX(), (int) r.getY(),
-                          (int) r.getWidth(), (int) r.getHeight(),
-                          juce::RectanglePlacement::centred);
-    };
-    drawLabel(labelPreDelayImage, preDelaySlider, -30.0f);
-    drawLabel(labelSizeImage, sizeSlider, -30.0f);
-    drawLabel(labelMixImage, mixSlider, -30.0f);
+    // PNG labels removed - using consistent hover headers instead
     
     // Hover indicator
     if (hoveredBodyPart.isNotEmpty())
@@ -502,10 +656,10 @@ void KimuVerbAudioProcessorEditor::createOrcaBodyMapping()
     };
     place("Head", 0.25f, 0.35f);       // Pre-delay
     place("DorsalFin", 0.75f, 0.20f);  // Size
-    place("UpperBody", 0.80f, 0.50f);  // Decay
-    place("Belly", 0.30f, 0.75f);      // Mix
-    place("Tail", 0.85f, 0.80f);       // Depth
-    place("LowerFin", 0.50f, 0.85f);   // Damping
+    place("UpperBody", 0.70f, 0.45f);  // Decay
+    place("Belly", 0.85f, 0.75f);      // Mix (moved to tail area)
+    place("Tail", 0.30f, 0.60f);       // Depth
+    place("LowerFin", 0.50f, 0.70f);   // Damping
 }
 
 void KimuVerbAudioProcessorEditor::setupParameters()
@@ -514,6 +668,9 @@ void KimuVerbAudioProcessorEditor::setupParameters()
         s.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         s.setLookAndFeel(&lnf);
+        s.setEnabled(true);
+        s.setInterceptsMouseClicks(true, true);
+        s.setMouseCursor(juce::MouseCursor::PointingHandCursor);
         addAndMakeVisible(s);
     };
     
@@ -537,6 +694,7 @@ void KimuVerbAudioProcessorEditor::setupParameters()
     setupSlider(currentSlider);
     setupSlider(pressureSlider);
     setupSlider(depthShiftSlider);
+
     
     addAndMakeVisible(loggingToggle);
 
@@ -545,6 +703,8 @@ void KimuVerbAudioProcessorEditor::setupParameters()
         l.setColour(juce::Label::textColourId, juce::Colour(200, 220, 240));
         l.setFont(juce::Font(12.0f, juce::Font::bold));
         l.setJustificationType(juce::Justification::centred);
+        l.setInterceptsMouseClicks(true, false);
+        l.setRepaintsOnMouseActivity(true);
         addAndMakeVisible(l);
     };
     setupLabel(toneLabel, "TONE");
@@ -559,6 +719,7 @@ void KimuVerbAudioProcessorEditor::setupParameters()
     setupLabel(decayLabel, "DECAY");
     setupLabel(dampingLabel, "DAMPING");
     setupLabel(depthLabel, "DEPTH");
+    setupLabel(mixLabel, "MIX");
     
     // UI Components
     addAndMakeVisible(*oceanBg);
@@ -603,10 +764,16 @@ void KimuVerbAudioProcessorEditor::layoutOrcaControls()
     mixSlider.setBounds(orcaBodyParts["Belly"].toNearestInt());
     depthSlider.setBounds(orcaBodyParts["Tail"].toNearestInt());
     dampingSlider.setBounds(orcaBodyParts["LowerFin"].toNearestInt());
+    preDelaySlider.toFront(false);
+    sizeSlider.toFront(false);
+    decaySlider.toFront(false);
+    mixSlider.toFront(false);
+    depthSlider.toFront(false);
+    dampingSlider.toFront(false);
 
     auto placeLabel = [&](juce::Label& l, const juce::Slider& s)
     {
-        auto r = s.getBounds().toFloat().translated(0.0f, -22.0f).expanded(8.0f, 4.0f);
+        auto r = s.getBounds().toFloat().translated(0.0f, -28.0f).expanded(6.0f, 2.0f);
         l.setBounds(r.toNearestInt());
     };
     placeLabel(decayLabel, decaySlider);
@@ -624,37 +791,37 @@ void KimuVerbAudioProcessorEditor::layoutUIComponents()
     // Visualizer on the right side
     visualizer->setBounds(bounds.removeFromRight(200).reduced(10));
     
-    // Advanced parameters on the left side
-    // Replace lines 627-634 with this:
     // Advanced parameters on the left side - LARGER and LOWER
     auto leftPanel = bounds.removeFromLeft(180).reduced(10);
-    leftPanel = leftPanel.withTop(leftPanel.getY() + 40); // Move down 40px
+    leftPanel = leftPanel.withTop(leftPanel.getY() + 100); // Move down 100px for better alignment
     
     auto placeLeft = [&](juce::Label& l, juce::Slider& s)
     {
-        l.setBounds(leftPanel.removeFromTop(16)); // Larger labels (14->16)
+        l.setBounds(leftPanel.removeFromTop(14)); // Slightly smaller labels
         s.setBounds(leftPanel.removeFromTop(60)); // Larger knobs (48->60)
         leftPanel.removeFromTop(8); // More spacing (6->8)
     };
-    
-    placeLeft(toneLabel, toneSlider);
+
     placeLeft(widthLabel, widthSlider);
     placeLeft(lowCutLabel, lowCutSlider);
     placeLeft(highCutLabel, highCutSlider);
     placeLeft(motionLabel, motionSlider);
     placeLeft(diffusionLabel, diffusionSlider);
     
-    // Oceanic controls at bottom left
+    // Oceanic controls at bottom (includes Mix and Tone)
     auto oceanicPanel = bounds.removeFromBottom(120).reduced(10);
+    auto oceanicPanelBounds = oceanicPanel;
     auto placeBottom = [&](juce::Label& l, juce::Slider& s)
     {
         auto col = oceanicPanel.removeFromLeft(90);
-        l.setBounds(col.removeFromTop(14));
+        l.setBounds(col.removeFromTop(12));
         s.setBounds(col.removeFromTop(60));
     };
     placeBottom(currentLabel, currentSlider);
     placeBottom(pressureLabel, pressureSlider);
     placeBottom(depthShiftLabel, depthShiftSlider);
+    placeBottom(mixLabel, mixSlider);
+    placeBottom(toneLabel, toneSlider);
     
     // Preset navigation at bottom center
     auto presetPanel = bounds.removeFromBottom(60).reduced(10);
@@ -665,6 +832,10 @@ void KimuVerbAudioProcessorEditor::layoutUIComponents()
     
     // Logging toggle
     loggingToggle.setBounds(bounds.removeFromTop(30).removeFromRight(100));
+
+    orcaHit = computeOrcaArea();
+    visualizerHit = visualizer->getBounds();
+    bottomHit = oceanicPanelBounds.toNearestInt();
     
     // Update preset display
     updatePresetDisplay();
@@ -723,32 +894,188 @@ void KimuVerbAudioProcessorEditor::updatePresetDisplay()
 {
     presetNameLabel.setText(presetManager->getCurrentPresetName(), juce::dontSendNotification);
     presetComboBox.setSelectedId(presetManager->currentPresetIndex + 1, juce::dontSendNotification);
+
+    const double duration = getPresetOceanDuration(presetManager->currentPresetIndex);
+    double startOffset = 0.0;
+    if (betterOceanData)
+    {
+        const auto oceanLenSec = betterOceanData->buffer.getNumSamples() / juce::jmax(1.0, betterOceanData->sampleRate);
+        const double randomFrac = uiRng.nextDouble();
+        startOffset = oceanLenSec * randomFrac;
+    }
+    triggerBetterOceanSfx(duration, startOffset);
 }
+
+juce::Rectangle<int> KimuVerbAudioProcessorEditor::computeOrcaArea() const
+{
+    auto bounds = getLocalBounds().toFloat();
+    auto contentArea = bounds;
+    contentArea.removeFromRight(220.0f);
+    contentArea.removeFromLeft(160.0f);
+    contentArea.removeFromBottom(110.0f);
+    auto orcaArea = contentArea.reduced(10.0f);
+    return orcaArea.toNearestInt();
+}
+
+double KimuVerbAudioProcessorEditor::getPresetOceanDuration(int presetIndex) const
+{
+    switch (presetIndex)
+    {
+        case 0: return 4.5;
+        case 1: return 6.0;
+        case 2: return 4.0;
+        case 3: return 5.0;
+        case 4: return 4.0;
+        case 5: return 5.5;
+        case 6: return 4.8;
+        case 7: return 6.5;
+        case 8: return 6.0;
+        case 9: return 5.2;
+        case 10: return 4.0;
+        case 11: return 4.0;
+        case 12: return 4.0;
+        case 13: return 5.0;
+        case 14: return 5.0;
+        case 15: return 5.8;
+        case 16: return 5.2;
+        case 17: return 6.2;
+        case 18: return 4.6;
+        case 19: return 4.4;
+        case 20: return 5.4;
+        default: return 4.5;
+    }
+}
+
+void KimuVerbAudioProcessorEditor::setupUiAudio()
+{
+    if (processor.wrapperType != juce::AudioProcessor::wrapperType_Standalone)
+        return;
+
+    auto err = uiAudioDevice.initialise(0, 2, nullptr, true);
+    if (! err.isEmpty())
+        return;
+
+    whaleSample = std::make_unique<UiSampleSource>();
+    whaleSample->setSample(whaleData);
+    betterOceanSample = std::make_unique<UiSampleSource>();
+    betterOceanSample->setSample(betterOceanData);
+    uiMixer.addInputSource(whaleSample.get(), false);
+    uiMixer.addInputSource(betterOceanSample.get(), false);
+
+    uiAudioPlayer.setSource(&uiMixer);
+    uiAudioDevice.addAudioCallback(&uiAudioPlayer);
+    uiAudioReady = true;
+}
+
+void KimuVerbAudioProcessorEditor::shutdownUiAudio()
+{
+    if (! uiAudioReady)
+        return;
+
+    uiAudioDevice.removeAudioCallback(&uiAudioPlayer);
+    uiAudioPlayer.setSource(nullptr);
+    uiMixer.removeAllInputs();
+    whaleSample.reset();
+    betterOceanSample.reset();
+    uiAudioReady = false;
+}
+
+void KimuVerbAudioProcessorEditor::triggerWhaleSfx()
+{
+    if (! uiAudioReady || whaleSample == nullptr || ! whaleData)
+        return;
+
+    auto now = juce::Time::getMillisecondCounter();
+    if (now - lastWhaleMs < 1200)
+        return;
+    lastWhaleMs = now;
+
+    const auto whaleLenSec = whaleData->buffer.getNumSamples() / juce::jmax(1.0, whaleData->sampleRate);
+    const double duration = juce::jmin(1.4, whaleLenSec);
+    whaleSample->trigger(duration, 0.06f, 0.0);
+}
+
+void KimuVerbAudioProcessorEditor::triggerWaterSfx()
+{
+    if (! uiAudioReady || betterOceanSample == nullptr || ! betterOceanData)
+        return;
+
+    auto now = juce::Time::getMillisecondCounter();
+    if (now - lastWaterMs < 350)
+        return;
+    lastWaterMs = now;
+
+    const auto oceanLenSec = betterOceanData->buffer.getNumSamples() / juce::jmax(1.0, betterOceanData->sampleRate);
+    const double maxStart = juce::jmax(0.0, oceanLenSec - 1.0);
+    const double startOffset = uiRng.nextDouble() * maxStart;
+    betterOceanSample->trigger(0.8, 0.30f, startOffset);
+}
+
+void KimuVerbAudioProcessorEditor::triggerBetterOceanSfx(double durationSeconds, double startOffsetSeconds)
+{
+    if (! uiAudioReady || betterOceanSample == nullptr || ! betterOceanData)
+    {
+        juce::Logger::writeToLog("triggerBetterOceanSfx: Failed - audio not ready or data missing");
+        return;
+    }
+
+    auto now = juce::Time::getMillisecondCounter();
+    if (now - lastWaterMs < 350)
+        return;
+    lastWaterMs = now;
+
+    juce::Logger::writeToLog("triggerBetterOceanSfx: Triggering ocean sound - duration: " +
+                             juce::String(durationSeconds) + "s, startOffset: " +
+                             juce::String(startOffsetSeconds) + "s");
+    juce::Logger::writeToLog("triggerBetterOceanSfx: Ocean buffer samples: " +
+                             juce::String(betterOceanData->buffer.getNumSamples()) +
+                             ", sample rate: " + juce::String(betterOceanData->sampleRate));
+
+    betterOceanSample->trigger(durationSeconds, 0.30f, startOffsetSeconds);
+
+    juce::Logger::writeToLog("triggerBetterOceanSfx: Ocean sound triggered successfully");
+}
+
 
 void KimuVerbAudioProcessorEditor::mouseDown(const juce::MouseEvent& event)
 {
-    // Handle clicks on orca body parts
+    const auto pos = event.position.toInt();
+
+    // Click on orca image -> whale sound
+    if (orcaHit.contains(pos))
+    {
+        triggerWhaleSfx();
+        return;
+    }
+
+    // Double-click anywhere -> whale sound
+    if (event.getNumberOfClicks() >= 2)
+    {
+        triggerWhaleSfx();
+        return;
+    }
 }
 
 void KimuVerbAudioProcessorEditor::mouseMove(const juce::MouseEvent& event)
 {
     // Update hover state for orca body parts
-    hoveredBodyPart = "";
-    
+    juce::String newHover;
     for (const auto& [partName, bounds] : orcaBodyParts)
     {
         if (bounds.contains(event.position))
         {
-            hoveredBodyPart = partName;
-            repaint();
-            return;
+            newHover = partName;
+            break;
         }
     }
-    
-    if (hoveredBodyPart.isNotEmpty())
+
+    if (newHover != hoveredBodyPart)
     {
-        hoveredBodyPart = "";
+        hoveredBodyPart = newHover;
         repaint();
     }
-}
 
+    wasInOrca = orcaHit.contains(event.position.toInt());
+    wasInVisualizer = visualizerHit.contains(event.position.toInt());
+    wasInBottom = bottomHit.contains(event.position.toInt());
+}

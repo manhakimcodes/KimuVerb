@@ -158,6 +158,7 @@ private:
     juce::Label decayLabel;
     juce::Label dampingLabel;
     juce::Label depthLabel;
+    juce::Label mixLabel;
 
     // Preset dropdown
     juce::ComboBox presetComboBox;
@@ -182,6 +183,38 @@ private:
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
     juce::String hoveredBodyPart;
+
+    struct UiSampleSource;
+    struct SampleData;
+
+    void setupUiAudio();
+    void shutdownUiAudio();
+    void triggerWhaleSfx();
+    void triggerWaterSfx();
+    void triggerBetterOceanSfx(double durationSeconds, double startOffsetSeconds);
+    double getPresetOceanDuration(int presetIndex) const;
+    juce::Rectangle<int> computeOrcaArea() const;
+    void loadAudioFiles();
+    bool loadAudioFile(const juce::File& file, SampleData& outData, const juce::String& label);
+
+    juce::AudioDeviceManager uiAudioDevice;
+    juce::AudioSourcePlayer uiAudioPlayer;
+    juce::MixerAudioSource uiMixer;
+    std::unique_ptr<UiSampleSource> whaleSample;
+    std::unique_ptr<UiSampleSource> betterOceanSample;
+    juce::AudioFormatManager uiFormatManager;
+    std::shared_ptr<SampleData> whaleData;
+    std::shared_ptr<SampleData> betterOceanData;
+    bool uiAudioReady = false;
+    juce::Random uiRng;
+    uint32 lastWhaleMs = 0;
+    uint32 lastWaterMs = 0;
+    juce::Rectangle<int> orcaHit;
+    juce::Rectangle<int> visualizerHit;
+    juce::Rectangle<int> bottomHit;
+    bool wasInOrca = false;
+    bool wasInVisualizer = false;
+    bool wasInBottom = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KimuVerbAudioProcessorEditor)
 };
