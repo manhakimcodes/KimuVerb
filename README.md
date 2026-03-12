@@ -2,6 +2,9 @@
 
 Professional ocean-themed reverb plugin with immersive visuals and musical, deep spaces.
 
+## Screenshot
+docs/assets/kimuverb-ui.png
+
 ## Documentation
 - Documentation/README.md
 - Documentation/USER_MANUAL.md

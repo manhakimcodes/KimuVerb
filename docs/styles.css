@@ -138,6 +138,14 @@ body {
   color: rgba(255, 255, 255, 0.6);
 }
 
+.orca-shot {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(122, 211, 255, 0.2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
 .section {
   max-width: 1100px;
   margin: 0 auto;
@@ -175,6 +183,9 @@ body {
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.6);
+  width: 100%;
+  object-fit: cover;
+  border: 1px solid rgba(122, 211, 255, 0.2);
 }
 
 .note {
