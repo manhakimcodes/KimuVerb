@@ -1,26 +1,23 @@
 # KimuVerb
 
-JUCE-based VST3 reverb plugin using CMake. UI features an orca silhouette with body-part knob placement.
+Professional ocean-themed reverb plugin with immersive visuals and musical, deep spaces.
 
-## Requirements
-- Windows 10/11
-- CMake 3.22+
-- Visual Studio 2022 with Desktop C++
-- Git
+## Documentation
+- Documentation/README.md
+- Documentation/USER_MANUAL.md
+- Documentation/INSTALLATION.md
+- Documentation/SUPPORT_INFO.md
 
-## Build
-PowerShell:
-```
-mkdir build
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-```
+## Website (GitHub Pages)
+The static site lives in docs/.
+- Entry point: docs/index.html
+- Styles: docs/styles.css
+- Script: docs/script.js
 
-Notes:
-- JUCE is fetched automatically via FetchContent; internet is required on first configure.
-- VST3 SDK is bundled in JUCE; no separate install needed.
+## Support
+- Email: manhakimu@gmail.com
+- Issues: https://github.com/manhakimcodes/KimuVerb/issues
+- Releases: https://github.com/manhakimcodes/KimuVerb/releases
 
-The VST3 will be copied to your default JUCE plugin folder if available; otherwise find it under `build/KimuVerb_artefacts/Release/VST3/`.
-
-## Run
-Open your DAW that supports VST3 and rescan plugins. The plugin is named "KimuVerb" under manufacturer "KimuAudio".
+## License
+KimuVerb (c) 2026 MANHAKIM. All rights reserved.

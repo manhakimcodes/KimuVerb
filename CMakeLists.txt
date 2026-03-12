@@ -160,6 +160,8 @@ target_compile_definitions(KimuVerb
   PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_USE_DARK_SPLASH_SCREEN=0
 )
 target_compile_definitions(KimuVerb PRIVATE 
     JUCE_PLUGINHOST_VST2=0 

@@ -67,7 +67,7 @@ private:
     std::vector<juce::Line<float>> lightRays;
 };
 
-class KimuVerbAudioProcessorEditor : public juce::AudioProcessorEditor
+class KimuVerbAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     KimuVerbAudioProcessorEditor(KimuVerbAudioProcessor&);
@@ -77,6 +77,7 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
     KimuVerbAudioProcessor& processor;
 
     OceanLookAndFeel lnf;
@@ -155,6 +156,8 @@ private:
     juce::Label currentLabel;
     juce::Label pressureLabel;
     juce::Label depthShiftLabel;
+    juce::Label preDelayLabel;
+    juce::Label sizeLabel;
     juce::Label decayLabel;
     juce::Label dampingLabel;
     juce::Label depthLabel;
@@ -183,6 +186,10 @@ private:
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseMove(const juce::MouseEvent& event) override;
     juce::String hoveredBodyPart;
+    struct OrcaTooltip;
+    void showOrcaTooltip(const juce::String& title, const juce::String& content, const juce::Rectangle<int>& anchor);
+    void hideOrcaTooltip();
+    void updateOrcaTooltip(const juce::String& newHover);
 
     struct UiSampleSource;
     struct SampleData;
@@ -196,6 +203,42 @@ private:
     juce::Rectangle<int> computeOrcaArea() const;
     void loadAudioFiles();
     bool loadAudioFile(const juce::File& file, SampleData& outData, const juce::String& label);
+
+    struct WaterRipple
+    {
+        juce::Point<float> position {};
+        float radius = 0.0f;
+        float maxRadius = 60.0f;
+        float alpha = 0.0f;
+        bool active = false;
+    };
+
+    struct WaveEffect
+    {
+        float waveOffset = 0.0f;
+        float waveSpeed = 0.9f;
+        float waveAmplitude = 3.0f;
+
+        void update(float deltaTime)
+        {
+            waveOffset += waveSpeed * deltaTime;
+            if (waveOffset > juce::MathConstants<float>::twoPi)
+                waveOffset -= juce::MathConstants<float>::twoPi;
+        }
+
+        float getWaveHeight(float x) const
+        {
+            return std::sin(x * 0.012f + waveOffset) * waveAmplitude;
+        }
+    };
+
+    void addRipple(juce::Point<float> pos);
+    void updateRipples(float deltaTime);
+    void drawRipples(juce::Graphics& g, const juce::Rectangle<float>& area);
+    void drawWaveOverlay(juce::Graphics& g, const juce::Rectangle<float>& area);
+    void draw3DMarineEffects(juce::Graphics& g, const juce::Rectangle<float>& bounds);
+    void drawWaterCaustics(juce::Graphics& g, const juce::Rectangle<float>& bounds);
+    void drawDepthParticles(juce::Graphics& g, const juce::Rectangle<float>& bounds);
 
     juce::AudioDeviceManager uiAudioDevice;
     juce::AudioSourcePlayer uiAudioPlayer;
@@ -215,6 +258,16 @@ private:
     bool wasInOrca = false;
     bool wasInVisualizer = false;
     bool wasInBottom = false;
+    juce::ComponentAnimator animator;
+    std::unique_ptr<OrcaTooltip> currentTooltip;
+    juce::String currentHoveredPart;
+    bool tooltipVisible = false;
+
+    std::vector<WaterRipple> ripples;
+    WaveEffect waveEffect;
+    juce::Point<float> lastRipplePos { -1000.0f, -1000.0f };
+    uint32 lastRippleMs = 0;
+    uint32 lastAnimMs = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KimuVerbAudioProcessorEditor)
 };
