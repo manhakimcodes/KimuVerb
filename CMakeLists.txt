@@ -194,14 +194,13 @@ target_link_libraries(KimuVerb
 )
 
 # Installer package configuration
-include(CPack)
-
 # Set package metadata
 set(CPACK_PACKAGE_NAME "KimuVerb")
 set(CPACK_PACKAGE_VENDOR "KimuAudio")
-set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
-set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
-set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_VERSION_MAJOR 1)
+set(CPACK_PACKAGE_VERSION_MINOR 0)
+set(CPACK_PACKAGE_VERSION_PATCH 0)
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "KimuVerb Reverb Plugin")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
@@ -213,13 +212,22 @@ if(WIN32)
   set(CPACK_NSIS_DISPLAY_NAME "KimuVerb Reverb")
   set(CPACK_NSIS_PACKAGE_NAME "KimuVerb")
   set(CPACK_NSIS_CONTACT "support@kimuaudio.com")
+  set(CPACK_PACKAGE_FILE_NAME "KimuVerb_v1.0_Setup")
+  set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+  set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64\\\\KimuAudio\\\\KimuVerb")
   set(CPACK_NSIS_MODIFY_PATH ON)
   
   # Install VST3 and standalone
-  install(TARGETS KimuVerb
-    RUNTIME DESTINATION "Plugins/VST3"
-    LIBRARY DESTINATION "Plugins/VST3"
-  )
+  if(TARGET KimuVerb_Standalone)
+    install(TARGETS KimuVerb_Standalone
+      RUNTIME DESTINATION "KimuVerb/Standalone"
+    )
+  endif()
+  if(TARGET KimuVerb_VST3)
+    install(DIRECTORY "$<TARGET_FILE_DIR:KimuVerb_VST3>/KimuVerb.vst3"
+      DESTINATION "KimuVerb/VST3"
+    )
+  endif()
   
 elseif(APPLE)
   # macOS DMG package
@@ -236,3 +244,4 @@ elseif(APPLE)
 endif()
 
 # Include CPack configuration
+include(CPack)
