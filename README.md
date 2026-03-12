@@ -48,7 +48,7 @@ Perfect for:
 *(Add a screenshot here once available)*
 
 ```
-"C:\Users\Owner\Pictures\Screenshots\build github screenshot.png"
+C:\Users\Owner\Pictures\Screenshots\build github screenshot.png
 ```
 
 Example:
