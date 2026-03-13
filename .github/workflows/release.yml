@@ -1,0 +1,56 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DENABLE_CLANG_TIDY=OFF
+          -DBUILD_AU=OFF
+          -DBUILD_STANDALONE=ON
+          -DBUILD_VST3=ON
+
+      - name: Build Installer
+        run: cmake --build build --config Release --target PACKAGE
+
+      - name: Assemble Release Zip
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $releaseRoot = "Release\KimuVerb_$tag_Release"
+          $installerOut = "Release\KimuVerb_$tag_Setup.exe"
+          New-Item -ItemType Directory -Force -Path "$releaseRoot\Installer" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$releaseRoot\Standalone" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$releaseRoot\VST3" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$releaseRoot\Documentation" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$releaseRoot\License" | Out-Null
+
+          Copy-Item -Force -Path "build\KimuVerb_v1.0_Setup.exe" -Destination "$releaseRoot\Installer\KimuVerb_$tag_Setup.exe"
+          Copy-Item -Force -Path "build\KimuVerb_artefacts\Release\Standalone\KimuVerb.exe" -Destination "$releaseRoot\Standalone"
+          Copy-Item -Force -Path "build\KimuVerb_artefacts\Release\VST3\KimuVerb.vst3" -Destination "$releaseRoot\VST3" -Recurse
+          Copy-Item -Force -Path "Documentation\*" -Destination "$releaseRoot\Documentation" -Recurse
+          Copy-Item -Force -Path "LICENSE" -Destination "$releaseRoot\License\LICENSE.txt"
+          Copy-Item -Force -Path "build\KimuVerb_v1.0_Setup.exe" -Destination $installerOut
+
+          Compress-Archive -Path $releaseRoot -DestinationPath "Release\KimuVerb_$tag_Release.zip" -Force
+
+      - name: Publish Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Release\KimuVerb_${{ github.ref_name }}_Setup.exe
+            Release\KimuVerb_${{ github.ref_name }}_Release.zip
