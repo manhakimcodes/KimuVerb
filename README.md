@@ -74,7 +74,7 @@ C:\Program Files\Common Files\VST3\
 ## Releases
 
 Latest release: **v1.0.4**  
-Release notes: `RELEASE_NOTES_v1.0.1.md`
+Release notes: `RELEASE_NOTES_v1.0.4.md`
 
 ---
 
