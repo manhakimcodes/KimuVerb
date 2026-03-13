@@ -261,8 +261,6 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
         juce::dsp::AudioBlock<float> postBlock(buffer);
         juce::dsp::ProcessContextReplacing<float> postCtx(postBlock);
-        highPass.process(postCtx);
-        lowPass.process(postCtx);
         limiter.process(postCtx);
 
         float outG = juce::Decibels::decibelsToGain(outGainDb);
