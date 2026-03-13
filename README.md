@@ -45,15 +45,7 @@ Perfect for:
 
 ## 📷 Plugin Interface
 
-*(Add a screenshot here once available)*
-
-```
-C:\Users\Owner\Pictures\Screenshots\build github screenshot.png
-```
-
-Example:
-
-![KimuVerb Interface](docs/images/kimuverb-ui.png)
+![KimuVerb Interface](docs/assets/kimuverb-ui.png)
 
 ---
 
@@ -76,6 +68,13 @@ C:\Program Files\Common Files\VST3\
 3. Restart your DAW and rescan plugins.
 
 4. Load **KimuVerb** from your plugin list.
+
+---
+
+## Releases
+
+Latest release: **v1.0.1**  
+Release notes: `RELEASE_NOTES_v1.0.1.md`
 
 ---
 
