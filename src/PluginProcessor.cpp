@@ -236,11 +236,6 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         juce::dsp::ProcessContextReplacing<float> ctx(block);
         reverb.process(ctx);
 
-        juce::dsp::AudioBlock<float> dryBlock(dryBuffer);
-        juce::dsp::ProcessContextReplacing<float> dryCtx(dryBlock);
-        highPass.process(dryCtx);
-        lowPass.process(dryCtx);
-
         float alpha = std::exp(-1.0f / (0.001f * juce::jmax(1.0f, duckRelease) * (float)getSampleRate()));
         for (int n = 0; n < numSamples; ++n)
         {
@@ -263,7 +258,7 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
                 float wet = wetPtr[n] * duckGain;
                 float dry = dryPtr[n];
                 float mix = mixSmoothed.getNextValue();
-                wetPtr[n] = dry * (1.0f - mix) + wet * mix;
+                wetPtr[n] = dry + (wet - dry) * mix;
             }
         }
 
@@ -272,7 +267,7 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float outG = juce::Decibels::decibelsToGain(outGainDb);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            buffer.applyGain(ch, 0, numSamples, outG);
+            buffer.applyGain(ch, 0, numSamples, outG * 0.8f);
         }
     }
     catch (const std::bad_alloc& e)
