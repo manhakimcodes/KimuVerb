@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 KimuVerbAudioProcessor::KimuVerbAudioProcessor()
     : juce::AudioProcessor(BusesProperties()
@@ -202,11 +203,14 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
         juce::HeapBlock<size_t> preDelaySamples;
         preDelaySamples.malloc((size_t) numSamples);
+        juce::HeapBlock<float> mixValues;
+        mixValues.malloc((size_t) numSamples);
         for (int n = 0; n < numSamples; ++n)
         {
             const float preMs = preDelayMsSmoothed.getNextValue();
             size_t preSamp = static_cast<size_t>(getSampleRate() * preMs / 1000.0);
             preDelaySamples[n] = preSamp;
+            mixValues[n] = mixSmoothed.getNextValue();
         }
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -257,7 +261,7 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             {
                 float wet = wetPtr[n] * duckGain;
                 float dry = dryPtr[n];
-                float mix = mixSmoothed.getNextValue();
+                float mix = mixValues[n];
                 wetPtr[n] = dry + (wet - dry) * mix;
             }
         }
@@ -267,7 +271,13 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         float outG = juce::Decibels::decibelsToGain(outGainDb);
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            buffer.applyGain(ch, 0, numSamples, outG * 0.8f);
+            float* data = buffer.getWritePointer(ch);
+            for (int n = 0; n < numSamples; ++n)
+            {
+                float v = data[n] * outG * 0.8f;
+                // Gentle soft clip to prevent hard clipping without a limiter.
+                data[n] = std::tanh(v);
+            }
         }
     }
     catch (const std::bad_alloc& e)
