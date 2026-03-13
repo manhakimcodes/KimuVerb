@@ -619,7 +619,7 @@ KimuVerbAudioProcessorEditor::KimuVerbAudioProcessorEditor(KimuVerbAudioProcesso
     layoutOrcaControls();
     layoutUIComponents();
 
-    startTimerHz(60);
+    startTimerHz(30);
 }
 
 KimuVerbAudioProcessorEditor::~KimuVerbAudioProcessorEditor()
@@ -698,6 +698,12 @@ void KimuVerbAudioProcessorEditor::resized()
     createOrcaBodyMapping();
     layoutOrcaControls();
     layoutUIComponents();
+    lastMoveMs = juce::Time::getMillisecondCounter();
+}
+
+void KimuVerbAudioProcessorEditor::moved()
+{
+    lastMoveMs = juce::Time::getMillisecondCounter();
 }
 
 void KimuVerbAudioProcessorEditor::createOrcaBodyMapping()
@@ -1227,6 +1233,12 @@ void KimuVerbAudioProcessorEditor::timerCallback()
     const auto nowMs = juce::Time::getMillisecondCounter();
     if (lastAnimMs == 0)
         lastAnimMs = nowMs;
+
+    if (! isShowing())
+        return;
+
+    if (nowMs - lastMoveMs < 250)
+        return;
 
     const float deltaTime = (nowMs - lastAnimMs) / 1000.0f;
     lastAnimMs = nowMs;

@@ -75,6 +75,7 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    void moved() override;
 
 private:
     void timerCallback() override;
@@ -268,6 +269,7 @@ private:
     juce::Point<float> lastRipplePos { -1000.0f, -1000.0f };
     uint32 lastRippleMs = 0;
     uint32 lastAnimMs = 0;
+    uint32 lastMoveMs = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(KimuVerbAudioProcessorEditor)
 };
