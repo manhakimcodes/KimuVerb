@@ -215,6 +215,11 @@ if(WIN32)
   set(CPACK_PACKAGE_FILE_NAME "KimuVerb_v1.0_Setup")
   set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
   set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64\\\\KimuAudio\\\\KimuVerb")
+  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+      "CreateDirectory \\\"$COMMONFILES64\\\\VST3\\\"\n"
+      "CopyFiles /SILENT \\\"$INSTDIR\\\\KimuVerb\\\\VST3\\\\KimuVerb.vst3\\\\*.*\\\" \\\"$COMMONFILES64\\\\VST3\\\"")
+  set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+      "RMDir /r \\\"$COMMONFILES64\\\\VST3\\\\KimuVerb.vst3\\\"")
   set(CPACK_NSIS_MODIFY_PATH ON)
   
   # Install VST3 and standalone
