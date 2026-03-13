@@ -200,6 +200,15 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         auto duckRelease = readParam(paramDuckRel, 120.0f);
         auto outGainDb = readParam(paramOutGain, 0.0f);
 
+        juce::HeapBlock<size_t> preDelaySamples;
+        preDelaySamples.malloc((size_t) numSamples);
+        for (int n = 0; n < numSamples; ++n)
+        {
+            const float preMs = preDelayMsSmoothed.getNextValue();
+            size_t preSamp = static_cast<size_t>(getSampleRate() * preMs / 1000.0);
+            preDelaySamples[n] = preSamp;
+        }
+
         for (int ch = 0; ch < numChannels; ++ch)
         {
             float* data = buffer.getWritePointer(ch);
@@ -211,15 +220,14 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
             for (int n = 0; n < numSamples; ++n)
             {
-                float preMs = preDelayMsSmoothed.getNextValue();
-                size_t preSamp = static_cast<size_t>(getSampleRate() * preMs / 1000.0);
+                size_t preSamp = preDelaySamples[n];
                 if (preSamp >= ringSize)
                     preSamp = ringSize - 1;
-                size_t readIdx = (writeIdx + ringSize + ringSize - preSamp) % ringSize;
+                size_t readIdx = (writeIdx + ringSize - preSamp) % ringSize;
                 float in = data[n];
                 float delayed = ring[readIdx];
                 ring[writeIdx] = in;
-                data[n] = delayed;
+                data[n] = (preSamp > 0 ? delayed : in);
                 writeIdx = (writeIdx + 1) % ringSize;
             }
         }
@@ -259,9 +267,7 @@ void KimuVerbAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
             }
         }
 
-        juce::dsp::AudioBlock<float> postBlock(buffer);
-        juce::dsp::ProcessContextReplacing<float> postCtx(postBlock);
-        limiter.process(postCtx);
+        // No limiter in reverb path to avoid coloration/distortion.
 
         float outG = juce::Decibels::decibelsToGain(outGainDb);
         for (int ch = 0; ch < numChannels; ++ch)
